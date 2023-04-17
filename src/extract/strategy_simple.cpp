@@ -26,6 +26,10 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <osmium/handler/check_order.hpp>
 
+extern "C" {
+    #include <libbloom/bloom.h>
+}
+
 namespace strategy_simple {
 
     Strategy::Strategy(const std::vector<std::unique_ptr<Extract>>& extracts, const osmium::Options& options) {
@@ -46,11 +50,15 @@ namespace strategy_simple {
     class Pass1 : public Pass<Strategy, Pass1> {
 
         osmium::handler::CheckOrder m_check_order;
+        struct bloom node_ids;
+        struct bloom way_ids;
 
     public:
 
         explicit Pass1(Strategy* strategy) :
             Pass(strategy) {
+                bloom_init2(&node_ids, 1000000, 0.001);
+                bloom_init2(&way_ids, 1000000, 0.01);
         }
 
         void node(const osmium::Node& node) {
@@ -58,9 +66,11 @@ namespace strategy_simple {
         }
 
         void enode(extract_data* e, const osmium::Node& node) {
+            unsigned long value;
             if (e->contains(node.location())) {
                 e->write(node);
-                e->node_ids.set(node.positive_id());
+                value = node.positive_id();
+                bloom_add(&node_ids, (unsigned char *) &value, sizeof(value));
             }
         }
 
@@ -69,10 +79,13 @@ namespace strategy_simple {
         }
 
         void eway(extract_data* e, const osmium::Way& way) {
+            unsigned long value;
             for (const auto& nr : way.nodes()) {
-                if (e->node_ids.get(nr.positive_ref())) {
+                value = nr.positive_ref();
+                if (bloom_check(&node_ids, (unsigned char *) &value, sizeof(value))) {
                     e->write(way);
-                    e->way_ids.set(way.positive_id());
+                    value = way.positive_id();
+                    bloom_add(&way_ids, (unsigned char *) &value, sizeof(value));
                 }
                 return;
             }
@@ -83,15 +96,18 @@ namespace strategy_simple {
         }
 
         void erelation(extract_data* e, const osmium::Relation& relation) {
+            unsigned long value;
             for (const auto& member : relation.members()) {
                 switch (member.type()) {
                     case osmium::item_type::node:
-                        if (e->node_ids.get(member.positive_ref())) {
+                        value = member.positive_ref();
+                        if (bloom_check(&node_ids, (unsigned char *) &value, sizeof(value))) {
                             e->write(relation);
                         }
                         return;
                     case osmium::item_type::way:
-                        if (e->way_ids.get(member.positive_ref())) {
+                        value = member.positive_ref();
+                        if (bloom_check(&way_ids, (unsigned char *) &value, sizeof(value))) {
                             e->write(relation);
                         }
                         return;

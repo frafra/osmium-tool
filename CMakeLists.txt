@@ -214,6 +214,27 @@ include_directories(SYSTEM include)
 include_directories(${PROJECT_BINARY_DIR}/src)
 
 #-----------------------------------------------------------------------------
+#
+#  libbloom
+#
+#-----------------------------------------------------------------------------
+
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DBLOOM_VERSION_MINOR=0 -DBLOOM_VERSION_MAJOR=2")
+
+set(BLOOM_DIR "include/libbloom")
+
+include_directories(${BLOOM_DIR})
+include_directories(${BLOOM_DIR}/murmur2)
+
+add_library(
+    libbloom
+    ${BLOOM_DIR}/bloom.c
+    ${BLOOM_DIR}/murmur2/MurmurHash2.c
+)
+
+link_libraries(libbloom)
+
+#-----------------------------------------------------------------------------
 
 SET(OSMIUM_COMMANDS
     add-locations-to-ways
